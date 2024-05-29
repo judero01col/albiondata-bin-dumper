@@ -8,199 +8,200 @@ using System.Xml;
 
 namespace Extractor.Extractors
 {
-  public class IDContainer
-  {
-    public string Index { get; set; }
-    public string UniqueName { get; set; }
-  }
-
-  public class ItemContainer : IDContainer
-  {
-    public string LocalizationNameVariable { get; set; }
-    public string LocalizationDescriptionVariable { get; set; }
-    public Dictionary<string, string> LocalizedNames { get; set; }
-    public Dictionary<string, string> LocalizedDescriptions { get; set; }
-  }
-
-  public enum ExportType
-  {
-    TextList,
-    Json,
-    Both
-  }
-
-  public enum ExportMode
-  {
-    ItemExtraction,
-    LocationExtraction,
-    DumpAllXML,
-    Everything
-  }
-
-  public enum ServerType
-  {
-      Live,
-      Staging,
-      Playground
-  }
-
-  public abstract class BaseExtractor
-  {
-    protected readonly string outputFolderPath;
-    protected readonly string mainGameFolder;
-    protected readonly ExportType exportType;
-    protected readonly ExportMode exportMode;
-
-    protected BaseExtractor(string mainGameFolder, string outputFolderPath, ExportMode exportMode, ExportType exportType)
+    public class IDContainer
     {
-      this.outputFolderPath = outputFolderPath;
-      this.mainGameFolder = mainGameFolder;
-      this.exportType = exportType;
-      this.exportMode = exportMode;
+        public string Index { get; set; }
+        public string UniqueName { get; set; }
     }
 
-    protected abstract string GetBinFilePath();
-    protected abstract void ExtractFromXML(Stream inputXmlFile, MultiStream outputStream, Action<MultiStream, IDContainer, bool> writeItem, LocalizationData localizationData = default);
-
-    protected XmlElement FindElement(XmlNode node, string elementName)
+    public class ItemContainer : IDContainer
     {
-      foreach (XmlNode childNode in node.ChildNodes)
-      {
-        if (childNode is XmlElement ele && ele.Name == elementName)
+        public string LocalizationNameVariable { get; set; }
+        public string LocalizationDescriptionVariable { get; set; }
+        public Dictionary<string, string> LocalizedNames { get; set; }
+        public Dictionary<string, string> LocalizedDescriptions { get; set; }
+    }
+
+    public enum ExportType
+    {
+        TextList,
+        Json,
+        Both
+    }
+
+    public enum ExportMode
+    {
+        ItemExtraction,
+        LocationExtraction,
+        DumpAllXML,
+        Everything
+    }
+
+    public enum ServerType
+    {
+        Live,
+        Staging,
+        Playground
+    }
+
+    public abstract class BaseExtractor
+    {
+        protected readonly string outputFolderPath;
+        protected readonly string mainGameFolder;
+        protected readonly ExportType exportType;
+        protected readonly ExportMode exportMode;
+
+        protected BaseExtractor(string mainGameFolder, string outputFolderPath, ExportMode exportMode, ExportType exportType)
         {
-          return ele;
+            this.outputFolderPath = outputFolderPath;
+            this.mainGameFolder = mainGameFolder;
+            this.exportType = exportType;
+            this.exportMode = exportMode;
         }
-      }
 
-      return null;
-    }
+        protected abstract string GetBinFilePath();
+        protected abstract void ExtractFromXML(Stream inputXmlFile, MultiStream outputStream, Action<MultiStream, IDContainer, bool> writeItem, LocalizationData localizationData = default);
 
-    public void Extract(LocalizationData localizationData = default)
-    {
-      var xmlPath = DecryptBinFile(GetBinFilePath(), outputFolderPath);
-      Console.WriteLine("Attribute of the File " + outputFolderPath);
-      try {
-        using (var inputFile = File.OpenRead(xmlPath))
+        protected XmlElement FindElement(XmlNode node, string elementName)
         {
-          var streamTypes = new List<StreamType>();
-          if (exportType == ExportType.TextList || exportType == ExportType.Both)
-          {
-            const ExportType exportType = ExportType.TextList;
-            streamTypes.Add(new StreamType
+            foreach (XmlNode childNode in node.ChildNodes)
             {
-              Stream = GetExportStream(exportType),
-              ExportType = exportType
-            });
-          }
-          if (exportType == ExportType.Json || exportType == ExportType.Both)
-          {
-            const ExportType exportType = ExportType.Json;
-            streamTypes.Add(new StreamType
-            {
-              Stream = GetExportStream(exportType),
-              ExportType = exportType
-            });
-          }
-          var multiStream = new MultiStream(streamTypes.ToArray());
-
-          ExtractFromXML(inputFile, multiStream, WriteItem, localizationData);
-
-          foreach (var streamType in streamTypes)
-          {
-            CloseExportStream(streamType.Stream, streamType.ExportType);
-            streamType.Stream.Close();
-          }
-        }
-        //Console.Out.WriteLine("End of Extract");
-      }
-      catch { throw new ArgumentException(); }
-    }
-
-    public static string DecryptBinFile(string binFile, string outputFolderPath)
-    {
-      var binFileWOE = Path.GetFileNameWithoutExtension(binFile);
-
-      var finalOutPath = Path.ChangeExtension(Path.Combine(outputFolderPath, binFile.Substring(binFile.LastIndexOf("GameData\\") + 9)), ".xml");
-      Console.Out.WriteLine("Extracting " + binFileWOE + ".bin... to: "+ finalOutPath);
-      Directory.CreateDirectory(Path.GetDirectoryName(finalOutPath));
-
-      using (var outputStream = File.Create(finalOutPath))
-      {
-        BinaryDecrypter.DecryptBinaryFile(binFile, outputStream);
-      }
-      return finalOutPath;
-    }
-
-    private Stream GetExportStream(ExportType exportType)
-    {
-      var filePathWithoutExtension = Path.Combine(outputFolderPath, "formatted", Path.GetFileNameWithoutExtension(GetBinFilePath()));
-      if (!Directory.Exists(Path.GetDirectoryName(filePathWithoutExtension)))
-      {
-        Directory.CreateDirectory(Path.GetDirectoryName(filePathWithoutExtension));
-      }
-
-      if (exportType == ExportType.TextList)
-      {
-        return File.Create(filePathWithoutExtension + ".txt");
-      }
-      else if (exportType == ExportType.Json)
-      {
-        var stream = File.Create(filePathWithoutExtension + ".json");
-        WriteString(stream, "[" + Environment.NewLine);
-        return stream;
-      }
-      return File.Create(filePathWithoutExtension + ".txt");
-    }
-
-    private void CloseExportStream(Stream stream, ExportType exportType)
-    {
-      if (exportType == ExportType.Json)
-      {
-        WriteString(stream, Environment.NewLine + "]");
-      }
-    }
-
-    private void WriteItem(MultiStream multiStream, IDContainer idContainer, bool first = false)
-    {
-      foreach (var streamType in multiStream.StreamTypes)
-      {
-        var output = new StringBuilder();
-        if (streamType.ExportType == ExportType.TextList)
-        {
-          output.AppendFormat("{0,4}: {1,-65}", idContainer.Index, idContainer.UniqueName);
-          if (idContainer is ItemContainer itemContainer && itemContainer.LocalizedNames != null)
-          {
-            var englishNames = itemContainer.LocalizedNames.Where(x => x.Key == "EN-US");
-            if (englishNames.Any())
-            {
-              output.AppendFormat(": {0}", englishNames.First().Value);
+                if (childNode is XmlElement ele && ele.Name == elementName)
+                {
+                    return ele;
+                }
             }
-          }
-          output.AppendLine();
+
+            return null;
         }
-        else if (streamType.ExportType == ExportType.Json)
+
+        public void Extract(LocalizationData localizationData = default)
         {
-          if (!first)
-          {
-            output.AppendLine(",");
-          }
-          output.Append(JsonConvert.SerializeObject(idContainer, Newtonsoft.Json.Formatting.Indented));
+            var xmlPath = DecryptBinFile(GetBinFilePath(), outputFolderPath);
+            Console.WriteLine("Attribute of the File " + outputFolderPath);
+            try
+            {
+                using (var inputFile = File.OpenRead(xmlPath))
+                {
+                    var streamTypes = new List<StreamType>();
+                    if (exportType == ExportType.TextList || exportType == ExportType.Both)
+                    {
+                        const ExportType exportType = ExportType.TextList;
+                        streamTypes.Add(new StreamType
+                        {
+                            Stream = GetExportStream(exportType),
+                            ExportType = exportType
+                        });
+                    }
+                    if (exportType == ExportType.Json || exportType == ExportType.Both)
+                    {
+                        const ExportType exportType = ExportType.Json;
+                        streamTypes.Add(new StreamType
+                        {
+                            Stream = GetExportStream(exportType),
+                            ExportType = exportType
+                        });
+                    }
+                    var multiStream = new MultiStream(streamTypes.ToArray());
+
+                    ExtractFromXML(inputFile, multiStream, WriteItem, localizationData);
+
+                    foreach (var streamType in streamTypes)
+                    {
+                        CloseExportStream(streamType.Stream, streamType.ExportType);
+                        streamType.Stream.Close();
+                    }
+                }
+                //Console.Out.WriteLine("End of Extract");
+            }
+            catch { throw new ArgumentException(); }
         }
-        WriteString(streamType, output.ToString());
-        output.Clear();
-      }
-    }
 
-    private void WriteString(StreamType stream, string val)
-    {
-      var buffer = Encoding.UTF8.GetBytes(val);
-      stream.Stream.Write(buffer, 0, buffer.Length);
-    }
+        public static string DecryptBinFile(string binFile, string outputFolderPath)
+        {
+            var binFileWOE = Path.GetFileNameWithoutExtension(binFile);
 
-    private void WriteString(Stream stream, string val)
-    {
-      var buffer = Encoding.UTF8.GetBytes(val);
-      stream.Write(buffer, 0, buffer.Length);
+            var finalOutPath = Path.ChangeExtension(Path.Combine(outputFolderPath, binFile.Substring(binFile.LastIndexOf("GameData\\") + 9)), ".xml");
+            Console.Out.WriteLine("Extracting " + binFileWOE + ".bin... to: " + finalOutPath);
+            Directory.CreateDirectory(Path.GetDirectoryName(finalOutPath));
+
+            using (var outputStream = File.Create(finalOutPath))
+            {
+                BinaryDecrypter.DecryptBinaryFile(binFile, outputStream);
+            }
+            return finalOutPath;
+        }
+
+        private Stream GetExportStream(ExportType exportType)
+        {
+            var filePathWithoutExtension = Path.Combine(outputFolderPath, "formatted", Path.GetFileNameWithoutExtension(GetBinFilePath()));
+            if (!Directory.Exists(Path.GetDirectoryName(filePathWithoutExtension)))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(filePathWithoutExtension));
+            }
+
+            if (exportType == ExportType.TextList)
+            {
+                return File.Create(filePathWithoutExtension + ".txt");
+            }
+            else if (exportType == ExportType.Json)
+            {
+                var stream = File.Create(filePathWithoutExtension + ".json");
+                WriteString(stream, "[" + Environment.NewLine);
+                return stream;
+            }
+            return File.Create(filePathWithoutExtension + ".txt");
+        }
+
+        private void CloseExportStream(Stream stream, ExportType exportType)
+        {
+            if (exportType == ExportType.Json)
+            {
+                WriteString(stream, Environment.NewLine + "]");
+            }
+        }
+
+        private void WriteItem(MultiStream multiStream, IDContainer idContainer, bool first = false)
+        {
+            foreach (var streamType in multiStream.StreamTypes)
+            {
+                var output = new StringBuilder();
+                if (streamType.ExportType == ExportType.TextList)
+                {
+                    output.AppendFormat("{0,4}: {1,-65}", idContainer.Index, idContainer.UniqueName);
+                    if (idContainer is ItemContainer itemContainer && itemContainer.LocalizedNames != null)
+                    {
+                        var englishNames = itemContainer.LocalizedNames.Where(x => x.Key == "EN-US");
+                        if (englishNames.Any())
+                        {
+                            output.AppendFormat(": {0}", englishNames.First().Value);
+                        }
+                    }
+                    output.AppendLine();
+                }
+                else if (streamType.ExportType == ExportType.Json)
+                {
+                    if (!first)
+                    {
+                        output.AppendLine(",");
+                    }
+                    output.Append(JsonConvert.SerializeObject(idContainer, Newtonsoft.Json.Formatting.Indented));
+                }
+                WriteString(streamType, output.ToString());
+                output.Clear();
+            }
+        }
+
+        private void WriteString(StreamType stream, string val)
+        {
+            var buffer = Encoding.UTF8.GetBytes(val);
+            stream.Stream.Write(buffer, 0, buffer.Length);
+        }
+
+        private void WriteString(Stream stream, string val)
+        {
+            var buffer = Encoding.UTF8.GetBytes(val);
+            stream.Write(buffer, 0, buffer.Length);
+        }
     }
-  }
 }
