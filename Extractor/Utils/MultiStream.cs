@@ -6,19 +6,19 @@ using System.Text;
 
 namespace Extractor
 {
-  public class MultiStream
-  {
-    public readonly StreamType[] StreamTypes;
-
-    public MultiStream(StreamType[] streamTypes)
+    public class MultiStream
     {
-      StreamTypes = streamTypes;
-    }
-  }
+        public readonly StreamType[] StreamTypes;
 
-  public class StreamType
-  {
-    public Stream Stream;
-    public ExportType ExportType;
-  }
+        public MultiStream(StreamType[] streamTypes)
+        {
+            StreamTypes = streamTypes;
+        }
+    }
+
+    public class StreamType
+    {
+        public Stream Stream;
+        public ExportType ExportType;
+    }
 }
